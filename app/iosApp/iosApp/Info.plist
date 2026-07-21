@@ -4,5 +4,15 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Приложению нужна геолокация для передачи координат водителя во время рейса.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Приложению нужна геолокация в фоне для непрерывной передачи координат во время рейса.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Приложению нужна геолокация в фоне для непрерывной передачи координат во время рейса.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>

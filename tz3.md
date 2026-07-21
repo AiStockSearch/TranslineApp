@@ -63,7 +63,7 @@ class GeoNotificationHelper(private val context: Context) {
                 "Трекинг геолокации",
                 NotificationManager.IMPORTANCE_LOW
             )
-            val manager = context.getSystemService(Context::NOTIFICATION_SERVICE) as NotificationManager
+            val manager = context.getSystemService(Context::NOTIFICATION_SERVICE.toString()) as NotificationManager
             manager.createNotificationChannel(channel)
         }
     }
@@ -76,7 +76,7 @@ class GeoNotificationHelper(private val context: Context) {
             .setAutoCancel(true)
             .build()
 
-        val manager = context.getSystemService(Context::NOTIFICATION_SERVICE) as NotificationManager
+        val manager = context.getSystemService(Context::NOTIFICATION_SERVICE.toString()) as NotificationManager
         manager.notify(1001, notification)
     }
 }

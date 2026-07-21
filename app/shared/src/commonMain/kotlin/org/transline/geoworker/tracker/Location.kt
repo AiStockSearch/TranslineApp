@@ -3,5 +3,6 @@ package org.transline.geoworker.tracker
 data class Location(
     val latitude: Double,
     val longitude: Double,
-    val timestampMs: Long
+    val timestampMs: Long,
+    val speedMps: Double = 0.0
 )

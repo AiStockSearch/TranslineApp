@@ -16,8 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.launch
 import org.transline.geoworker.tracker.*
 import kotlinx.datetime.Clock
@@ -28,22 +28,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val storage = SharedPreferencesTrackingStorage(applicationContext)
-
-        // Инициализация реального GPS провайдера
+        val secureStore = EncryptedPrefsSecureConfigStore(applicationContext)
         val realLocationProvider = AndroidLocationProvider(applicationContext)
-
-        val dummyApiService = object : LocationApiService {
-            override suspend fun sendLocation(location: Location): Boolean {
-                Log.d("TrackerTest", "🌐 API: Отправка на сервер (${location.latitude}, ${location.longitude})... УСПЕШНО")
-                return true 
-            }
-        }
-
+        val httpClient = HttpClient(OkHttp)
         val networkChecker = AndroidNetworkChecker(applicationContext)
-        val offlineQueue = StorageOfflineQueueStorage(storage)
-        val locationRepository = LocationRepository(dummyApiService, networkChecker, offlineQueue)
-
-        val controller = LocationTrackerController(realLocationProvider, locationRepository, storage)
+        val locationRepository = DefaultLocationRepository(httpClient, storage, networkChecker)
+        val controller = LocationTrackerController(realLocationProvider, locationRepository, storage, secureStore)
 
         setContent {
             MaterialTheme {
@@ -52,20 +42,21 @@ class MainActivity : ComponentActivity() {
                 val permissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestMultiplePermissions()
                 ) { permissions ->
-                    hasPermissions = permissions.values.all { it }
+                    hasPermissions = permissions.values.any { it }
                 }
 
                 LaunchedEffect(Unit) {
                     permissionLauncher.launch(
                         arrayOf(
                             Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                            Manifest.permission.POST_NOTIFICATIONS
                         )
                     )
                 }
 
                 if (hasPermissions) {
-                    TestTrackerScreen(controller)
+                    TestTrackerScreen(controller, applicationContext)
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("Необходимы разрешения на геолокацию")
@@ -77,7 +68,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun TestTrackerScreen(controller: LocationTrackerController) {
+fun TestTrackerScreen(
+    controller: LocationTrackerController,
+    appContext: android.content.Context
+) {
     var statusText by remember { mutableStateOf("Нажми обновить статус") }
     val scope = rememberCoroutineScope()
 
@@ -85,6 +79,7 @@ fun TestTrackerScreen(controller: LocationTrackerController) {
         val state = controller.getScheduleState()
         statusText = """
             Активен: ${state.isTrackingActive}
+            Running: ${controller.isLocationServiceRunning()}
             Последняя отправка: ${state.lastSentTimestamp}
             Следующая плановая: ${state.nextScheduledTimestamp}
         """.trimIndent()
@@ -97,30 +92,64 @@ fun TestTrackerScreen(controller: LocationTrackerController) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Тестирование модуля (смотри Logcat по тегу 'TrackerTest')", color = MaterialTheme.colorScheme.primary)
+        Text(
+            "Тест модуля (Logcat: TrackerTest / LocationFGS)",
+            color = MaterialTheme.colorScheme.primary
+        )
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         Text(statusText)
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(onClick = {
-            Log.d("TrackerTest", "--- СТАРТ РЕЙСА ---")
-            // Назначаем рейс. Время погрузки ставим = сейчас
-            controller.startTrip(Clock.System.now().toEpochMilliseconds())
+            Log.d("TrackerTest", "--- CONTINUOUS startLocationService ---")
+            controller.startLocationService(
+                apiEndpoint = "https://example.com",
+                driverUuid = "demo-driver-uuid",
+                orderNumber = "ORD-DEMO",
+                updateIntervalMinutes = 1
+            )
+            LocationForegroundService.start(appContext)
             refreshStatus()
         }) {
-            Text("Начать рейс (startTrip)")
+            Text("Continuous: startLocationService + FGS")
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+
         Button(onClick = {
-            Log.d("TrackerTest", "--- ПРОВЕРКА ОТПРАВКИ (SIMULATE BOOT/TICK) ---")
+            Log.d("TrackerTest", "--- stopLocationService ---")
+            controller.stopLocationService()
+            LocationForegroundService.stop(appContext)
+            refreshStatus()
+        }) {
+            Text("Continuous: stopLocationService")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(onClick = {
+            Log.d("TrackerTest", "--- СТАРТ РЕЙСА ---")
+            controller.startTrip(Clock.System.now().toEpochMilliseconds())
+            LocationForegroundService.start(appContext)
+            refreshStatus()
+        }) {
+            Text("Рейс: startTrip")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(onClick = {
+            Log.d("TrackerTest", "--- ПРОВЕРКА ОТПРАВКИ ---")
             scope.launch {
                 controller.executePendingOrScheduledTracking()
                 refreshStatus()
             }
         }) {
-            Text("Выполнить отправку (executePendingOrScheduledTracking)")
+            Text("Рейс: executePendingOrScheduledTracking")
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         Button(onClick = { refreshStatus() }) {
             Text("Обновить статус")
