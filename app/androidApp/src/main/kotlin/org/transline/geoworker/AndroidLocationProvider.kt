@@ -13,21 +13,6 @@ import org.transline.geoworker.tracker.PlatformLocationProvider
 class AndroidLocationProvider(private val context: Context) : PlatformLocationProvider {
     private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
 
-    package org.transline.geoworker
-
-import android.annotation.SuppressLint
-import android.content.Context
-import android.util.Log
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
-import kotlinx.coroutines.tasks.await
-import org.transline.geoworker.tracker.Location
-import org.transline.geoworker.tracker.PlatformLocationProvider
-
-class AndroidLocationProvider(private val context: Context) : PlatformLocationProvider {
-    private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
-
     @SuppressLint("MissingPermission")
     override suspend fun getCurrentLocation(): Location? {
         return try {
@@ -39,26 +24,25 @@ class AndroidLocationProvider(private val context: Context) : PlatformLocationPr
                 cancellationTokenSource.token
             ).await()
 
-            // Fallback: если точный текущий снимок не успел получить координаты (например, в фоновом режиме),
-            // запрашиваем последнюю известную локацию
             if (androidLocation == null) {
                 Log.w("TrackerTest", "📍 GPS: High accuracy null, пробуем lastLocation...")
                 androidLocation = fusedLocationClient.lastLocation.await()
             }
 
             if (androidLocation != null) {
-                Log.d("TrackerTest", "📍 GPS: Получено ${androidLocation.latitude}, ${androidLocation.longitude}")
+                val speed = if (androidLocation.hasSpeed()) androidLocation.speed.toDouble() else 0.0
                 Location(
                     latitude = androidLocation.latitude,
                     longitude = androidLocation.longitude,
-                    timestampMs = androidLocation.time
+                    timestampMs = androidLocation.time,
+                    speedMps = speed
                 )
             } else {
                 Log.w("TrackerTest", "📍 GPS: Локация null. Попробуйте обновить координаты в настройках AVD.")
                 null
             }
         } catch (e: Exception) {
-            Log.e("TrackerTest", "📍 GPS Ошибка: ${e.message}")
+            Log.e("Tracker", "Android location error: ${e.message}")
             null
         }
     }

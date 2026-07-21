@@ -7,9 +7,15 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.transline.geoworker.tracker.DefaultLocationRepository
+import org.transline.geoworker.tracker.LocationTrackerController
+import org.transline.geoworker.tracker.SharedPreferencesTrackingStorage
+import android.util.Base64
 
 class LocationTrackerModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -17,19 +23,14 @@ class LocationTrackerModule(private val reactContext: ReactApplicationContext) :
     override fun getName(): String = "LocationTracker"
 
     // Lazy-инициализация KMP контроллера
-    private val controller: org.transline.geoworker.tracker.LocationTrackerController by lazy {
-        val storage = org.transline.geoworker.tracker.SharedPreferencesTrackingStorage(reactContext)
+    private val storage by lazy { SharedPreferencesTrackingStorage(reactContext) }
+    
+    private val controller: LocationTrackerController by lazy {
         val provider = AndroidLocationProvider(reactContext)
-        val networkChecker = AndroidNetworkChecker(reactContext)
-        val offlineQueue = org.transline.geoworker.tracker.StorageOfflineQueueStorage(storage)
-        val apiService = object : org.transline.geoworker.tracker.LocationApiService {
-            override suspend fun sendLocation(location: org.transline.geoworker.tracker.Location): Boolean {
-                // TODO: заменить на реальный HTTP-вызов к серверу
-                return true
-            }
-        }
-        val locationRepository = org.transline.geoworker.tracker.LocationRepository(apiService, networkChecker, offlineQueue)
-        org.transline.geoworker.tracker.LocationTrackerController(provider, locationRepository, storage)
+        val httpClient = HttpClient(OkHttp)
+        val locationRepository = DefaultLocationRepository(httpClient, storage)
+        
+        LocationTrackerController(provider, locationRepository, storage)
     }
 
     private val notificationHelper: GeoNotificationHelper by lazy {
@@ -54,6 +55,30 @@ class LocationTrackerModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    // --- 0. Сохранение конфигурации (эндпоинт, UUID, Basic Auth) ---
+    @ReactMethod
+    fun saveLocationConfiguration(
+        apiEndpoint: String,
+        driverUuid: String,
+        username: String?,
+        password: String?,
+        promise: Promise
+    ) {
+        try {
+            storage.setApiEndpoint(apiEndpoint)
+            storage.setDriverUuid(driverUuid)
+
+            if (!username.isNullOrEmpty() && !password.isNullOrEmpty()) {
+                val credentials = "$username:$password"
+                val authHeader = "Basic " + Base64.encodeToString(credentials.toByteArray(), Base64.NO_WRAP)
+                storage.setAuthHeader(authHeader)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("CONFIG_ERROR", e.message, e)
+        }
+    }
+
     // --- 1. Получение текущей геокоординаты по ручке ---
     @ReactMethod
     fun getCurrentLocation(promise: Promise) {
@@ -66,6 +91,7 @@ class LocationTrackerModule(private val reactContext: ReactApplicationContext) :
                     val map = Arguments.createMap().apply {
                         putDouble("latitude", location.latitude)
                         putDouble("longitude", location.longitude)
+                        putDouble("speedMps", location.speedMps)
                         putDouble("timestamp", location.timestampMs.toDouble())
                     }
                     promise.resolve(map)

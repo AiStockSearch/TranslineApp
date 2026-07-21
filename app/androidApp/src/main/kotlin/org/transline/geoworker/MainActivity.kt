@@ -16,8 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.launch
 import org.transline.geoworker.tracker.*
 import kotlinx.datetime.Clock
@@ -32,16 +32,9 @@ class MainActivity : ComponentActivity() {
         // Инициализация реального GPS провайдера
         val realLocationProvider = AndroidLocationProvider(applicationContext)
 
-        val dummyApiService = object : LocationApiService {
-            override suspend fun sendLocation(location: Location): Boolean {
-                Log.d("TrackerTest", "🌐 API: Отправка на сервер (${location.latitude}, ${location.longitude})... УСПЕШНО")
-                return true 
-            }
-        }
-
-        val networkChecker = AndroidNetworkChecker(applicationContext)
-        val offlineQueue = StorageOfflineQueueStorage(storage)
-        val locationRepository = LocationRepository(dummyApiService, networkChecker, offlineQueue)
+        // Ktor клиент и единый KMP репозиторий
+        val httpClient = HttpClient(OkHttp)
+        val locationRepository = DefaultLocationRepository(httpClient, storage)
 
         val controller = LocationTrackerController(realLocationProvider, locationRepository, storage)
 
@@ -105,12 +98,13 @@ fun TestTrackerScreen(controller: LocationTrackerController) {
 
         Button(onClick = {
             Log.d("TrackerTest", "--- СТАРТ РЕЙСА ---")
-            // Назначаем рейс. Время погрузки ставим = сейчас
             controller.startTrip(Clock.System.now().toEpochMilliseconds())
             refreshStatus()
         }) {
             Text("Начать рейс (startTrip)")
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         Button(onClick = {
             Log.d("TrackerTest", "--- ПРОВЕРКА ОТПРАВКИ (SIMULATE BOOT/TICK) ---")
@@ -121,6 +115,8 @@ fun TestTrackerScreen(controller: LocationTrackerController) {
         }) {
             Text("Выполнить отправку (executePendingOrScheduledTracking)")
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         Button(onClick = { refreshStatus() }) {
             Text("Обновить статус")
