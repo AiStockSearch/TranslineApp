@@ -8,6 +8,7 @@ plugins {
 kotlin {
     iosArm64()
     iosSimulatorArm64()
+    // iosX64()
     
     jvm()
     
@@ -29,6 +30,7 @@ kotlin {
     
     sourceSets {
         commonMain.dependencies {
+            implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0")
             // put your Multiplatform dependencies here
         }
         commonTest.dependencies {

@@ -7,6 +7,8 @@ xcuserdata
 local.properties
 .idea
 .DS_Store
+.env
+.env.*
 captures
 .externalNativeBuild
 .cxx
@@ -17,3 +19,5 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+dist/
+build/npm-package/

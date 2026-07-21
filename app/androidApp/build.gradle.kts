@@ -13,10 +13,24 @@ kotlin {
 dependencies {
     implementation(project(":app:shared"))
 
+    // Ktor клиент для Android (OkHttp engine)
+    implementation("io.ktor:ktor-client-core:3.0.0")
+    implementation("io.ktor:ktor-client-okhttp:3.0.0")
+    implementation("io.ktor:ktor-client-content-negotiation:3.0.0")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.0")
+
     implementation(libs.androidx.activity.compose)
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
+    
+    implementation(libs.compose.material3)
+    implementation(libs.compose.foundation)
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0")
+    
+    implementation("com.google.android.gms:play-services-location:21.2.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    implementation("com.facebook.react:react-android:0.73.0")
 }
 
 android {

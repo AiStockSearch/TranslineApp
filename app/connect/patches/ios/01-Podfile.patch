@@ -1,0 +1,26 @@
+--- a/ios/Podfile
++++ b/ios/Podfile
+@@ -20,6 +20,18 @@ target 'YourApp' do
+   config = use_native_modules!
+ 
+   use_react_native!(
+     :path => config[:reactNativePath],
+     :app_path => "#{Pod::Config.instance.installation_root}/.."
+   )
++
++  # --- TranslineGeoWorker ---
++  # Вариант A: podspec из репозитория KMP
++  pod 'TranslineGeoWorker', :path => '../../TranslineGeoWorker/app/connect'
++
++  # Вариант B: только XCFramework вручную в Xcode
++  # (Embed & Sign SharedLocationTracker.xcframework)
++  # + добавьте LocationTrackerModule.swift / .m в Target Membership
+ 
+   post_install do |installer|
+     react_native_post_install(
+       installer,
+       config[:reactNativePath],
+       :mac_catalyst_enabled => false
+     )
+   end
+ end

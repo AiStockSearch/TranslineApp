@@ -1,0 +1,25 @@
+{
+  "name": "your-rn-app",
+  "dependencies": {
+    "react": "...",
+    "react-native": ">=0.73.0",
+    "@react-native-community/geolocation": "^3.4.0"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.0",
+    "postinstall-postinstall": "^2.1.0"
+  },
+  "scripts": {
+    "postinstall": "patch-package",
+    "geoworker:patch": "node ../TranslineGeoWorker/scripts/apply-geoworker-patches.js --root=../TranslineGeoWorker"
+  },
+  "comment_geoworker": [
+    "Вариант A: npm i path/to/transline-geoworker-VERSION.tgz (make pack-npm)",
+    "Вариант B: скопировать src/native в проект",
+    "Вариант C: file: зависимость на этот репозиторий",
+    "geoworker:patch — правки android/ios хоста из app/connect/patches (не путать с postinstall patch-package)"
+  ],
+  "optional_local_path": {
+    "@transline/geoworker": "file:../TranslineGeoWorker"
+  }
+}
