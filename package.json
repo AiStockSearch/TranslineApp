@@ -1,6 +1,6 @@
 {
   "name": "@transline/geoworker",
-  "version": "0.2.6",
+  "version": "0.2.9",
   "description": "KMP location tracker + React Native TurboModule Spec / JS facade",
   "main": "src/native/index.ts",
   "react-native": "src/native/index.ts",

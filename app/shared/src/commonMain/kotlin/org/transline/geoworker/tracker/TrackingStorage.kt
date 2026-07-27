@@ -40,6 +40,28 @@ interface TrackingStorage {
     fun getString(key: String): String?
     fun putString(key: String, value: String)
 
+    /** Native notify i18n bundle JSON ([NotifyI18nBundle]); blank/missing = none. */
+    fun getNotifyI18nBundleJson(): String? = getString(NotifyI18nStorageKeys.BUNDLE_JSON)
+
+    fun setNotifyI18nBundleJson(json: String) {
+        putString(NotifyI18nStorageKeys.BUNDLE_JSON, json)
+    }
+
+    fun clearNotifyI18nBundle() {
+        putString(NotifyI18nStorageKeys.BUNDLE_JSON, "")
+    }
+
+    /** Trip notify session JSON ([TripNotifySession]); blank/missing = none. */
+    fun getTripNotifySessionJson(): String? = getString(TripNotifySessionStorageKeys.SESSION_JSON)
+
+    fun setTripNotifySessionJson(json: String) {
+        putString(TripNotifySessionStorageKeys.SESSION_JSON, json)
+    }
+
+    fun clearTripNotifySession() {
+        putString(TripNotifySessionStorageKeys.SESSION_JSON, "")
+    }
+
     /** Full wipe including registration (endpoint/uuid/auth). Prefer [clearTripState] for trip end. */
     fun clear()
 }

@@ -116,5 +116,7 @@ class NSUserDefaultsTrackingStorage : TrackingStorage {
         defaults.removeObjectForKey("order_number")
         defaults.removeObjectForKey("offline_queue")
         defaults.removeObjectForKey("registration_locked")
+        defaults.removeObjectForKey(NotifyI18nStorageKeys.BUNDLE_JSON)
+        defaults.removeObjectForKey(TripNotifySessionStorageKeys.SESSION_JSON)
     }
 }

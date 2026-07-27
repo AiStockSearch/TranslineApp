@@ -2,8 +2,13 @@ package org.transline.geoworker.tracker
 
 interface TrackingListener {
     fun onLocationSent(latitude: Double, longitude: Double, timestamp: Long)
+
     fun onLocationFailed(message: String)
+
     fun onLocationServicesDisabled()
+
+    /** Product NotifyApp shade (coords tick). Default no-op for existing listeners. */
+    fun onProductNotify(title: String, body: String, deepLink: String) {}
 
     /** HTTP probe result — status + short message + method + redacted URL; never body/tokens (D-03, D-04). */
     fun onHttpResult(

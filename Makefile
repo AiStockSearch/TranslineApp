@@ -2,10 +2,10 @@
 # KMP Automation Makefile (TranslineGeoWorker)
 # ==============================================================================
 #
-# Локальный релиз в GitLab:
-#   export GITLAB_TOKEN=...
-#   export GITLAB_PROJECT_ID=12345
-#   export GITLAB_HOST=gitlab.example.com   # если не gitlab.com
+# Локальный релиз в GitHub:
+#   export GITHUB_TOKEN=...                 # token с правами на releases (repo)
+#   export GITHUB_OWNER=your-org-or-user
+#   export GITHUB_REPO=TranslineGeoWorker
 #   make release VERSION=0.1.0
 #
 # ==============================================================================
@@ -20,9 +20,9 @@
 
 # --- параметры релиза ---
 VERSION ?= $(shell node -p "require('./package.json').version" 2>/dev/null || echo 0.1.0)
-GITLAB_HOST ?= gitlab.com
-GITLAB_PROJECT_ID ?=
-GITLAB_TOKEN ?=
+GITHUB_OWNER ?=AiStockSearch
+GITHUB_REPO ?=TranslineApp
+GITHUB_TOKEN ?=
 PACKAGE_REGISTRY_NAME ?= geoworker
 
 # Цветовая разметка
@@ -35,16 +35,16 @@ RESET := \033[0m
 ## help: Отобразить список доступных команд
 help:
 	@echo ""
-	@echo "$(CYAN)Сборка и GitLab Releases:$(RESET)"
+	@echo "$(CYAN)Сборка и GitHub Releases:$(RESET)"
 	@echo ""
 	@echo "  $(GREEN)make build-aar$(RESET)         - Android AAR (core + shared)"
 	@echo "  $(GREEN)make build-xcframework$(RESET) - iOS XCFramework"
 	@echo "  $(GREEN)make pack-npm$(RESET)          - AAR + XCFramework → dist/*.tgz"
-	@echo "  $(GREEN)make release$(RESET)           - сборка + pack + публикация в GitLab Release"
+	@echo "  $(GREEN)make release$(RESET)           - сборка + pack + публикация в GitHub Release"
 	@echo "  $(GREEN)make release-only$(RESET)      - только upload уже собранного dist/*.tgz"
 	@echo ""
 	@echo "  Версия:  make release VERSION=0.1.0"
-	@echo "  Env:     GITLAB_TOKEN, GITLAB_PROJECT_ID [, GITLAB_HOST]"
+	@echo "  Env:     GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO"
 	@echo ""
 	@echo "$(CYAN)Прочее:$(RESET)"
 	@echo ""
@@ -112,24 +112,27 @@ apply-host-patches:
 		$(if $(DRY_RUN),--dry-run,)
 	@echo "$(GREEN)✓ Host patches done$(RESET)"
 
-## release: Полный локальный релиз → GitLab Package Registry + Release
+## release: Полный локальный релиз → GitHub Release
 release: pack-npm release-only
 
-## release-only: Загрузить уже собранный dist/*.tgz (+ AAR/XCF) в GitLab
+## release-only: Загрузить уже собранный dist/*.tgz (+ AAR/XCF) в GitHub Release
 release-only:
-	@if [ -z "$(GITLAB_TOKEN)" ]; then \
-		echo "$(RED)ERROR: export GITLAB_TOKEN=...$(RESET)"; exit 1; \
+	@if [ -z "$(GITHUB_TOKEN)" ]; then \
+		echo "$(RED)ERROR: export GITHUB_TOKEN=...$(RESET)"; exit 1; \
 	fi
-	@if [ -z "$(GITLAB_PROJECT_ID)" ]; then \
-		echo "$(RED)ERROR: export GITLAB_PROJECT_ID=...$(RESET)"; exit 1; \
+	@if [ -z "$(GITHUB_OWNER)" ]; then \
+		echo "$(RED)ERROR: export GITHUB_OWNER=...$(RESET)"; exit 1; \
 	fi
-	@echo "$(YELLOW)--> Публикация v$(VERSION) в GitLab ($(GITLAB_HOST))...$(RESET)"
-	chmod +x scripts/publish-gitlab-release.sh
-	GITLAB_TOKEN="$(GITLAB_TOKEN)" \
-	GITLAB_PROJECT_ID="$(GITLAB_PROJECT_ID)" \
-	GITLAB_HOST="$(GITLAB_HOST)" \
+	@if [ -z "$(GITHUB_REPO)" ]; then \
+		echo "$(RED)ERROR: export GITHUB_REPO=...$(RESET)"; exit 1; \
+	fi
+	@echo "$(YELLOW)--> Публикация v$(VERSION) в GitHub ($(GITHUB_OWNER)/$(GITHUB_REPO))...$(RESET)"
+	chmod +x scripts/publish-github-release.sh
+	GITHUB_TOKEN="$(GITHUB_TOKEN)" \
+	GITHUB_OWNER="$(GITHUB_OWNER)" \
+	GITHUB_REPO="$(GITHUB_REPO)" \
 	PACKAGE_REGISTRY_NAME="$(PACKAGE_REGISTRY_NAME)" \
-	./scripts/publish-gitlab-release.sh "$(VERSION)"
+	./scripts/publish-github-release.sh "$(VERSION)"
 	@echo "$(GREEN)✓ Release v$(VERSION) опубликован$(RESET)"
 
 ## test: Запуск всех юнит-тестов
@@ -163,7 +166,7 @@ publish-maven:
 	./gradlew :app:shared:publish
 	@echo "$(GREEN)✓ Модуль :app:shared успешно опубликован!$(RESET)"
 
-## publish: alias → release (GitLab)
+## publish: alias → release (GitHub)
 publish: release
 
 ## build-all: Полная сборка sample (APK + XCFramework)

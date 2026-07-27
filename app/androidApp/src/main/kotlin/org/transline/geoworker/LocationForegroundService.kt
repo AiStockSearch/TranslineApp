@@ -98,6 +98,31 @@ class LocationForegroundService : Service() {
                 override fun onLocationServicesDisabled() {
                     updateNotification("Геолокация недоступна")
                 }
+
+                override fun onProductNotify(title: String, body: String, deepLink: String) {
+                    try {
+                        org.transline.geoworker.notify.NotifyAndroidContext.init(applicationContext)
+                        val payload =
+                            org.transline.geoworker.notify.NotifyPayload(
+                                id = "geo_coords_${System.currentTimeMillis()}",
+                                title = title,
+                                body = body,
+                                deepLink = deepLink,
+                                actions =
+                                    listOf(
+                                        org.transline.geoworker.notify.NotifyAction(
+                                            id = org.transline.geoworker.notify.NotifyActionId.OPEN,
+                                            title = "Open",
+                                            deepLink = deepLink,
+                                        ),
+                                    ),
+                            )
+                        org.transline.geoworker.notify.NotifyManagerHolder.getOrCreate().show(payload)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "product notify failed: ${e.message}")
+                    }
+                    updateNotification(body.take(80))
+                }
             }
             ctrl.addListener(listener)
             fgsListener = listener

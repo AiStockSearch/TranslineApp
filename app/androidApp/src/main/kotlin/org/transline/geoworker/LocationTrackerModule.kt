@@ -18,6 +18,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.transline.geoworker.tracker.LocationTrackerController
 import org.transline.geoworker.tracker.SharedPreferencesTrackingStorage
+import org.transline.geoworker.tracker.NotifyI18nBundle
+import org.transline.geoworker.tracker.decodeNotifyI18nBundle
+import org.transline.geoworker.tracker.decodeTripNotifySession
+import org.transline.geoworker.tracker.encodeNotifyI18nBundle
+import org.transline.geoworker.tracker.encodeTripNotifySession
+import org.transline.geoworker.notify.NotifyAction
+import org.transline.geoworker.notify.NotifyActionId
+import org.transline.geoworker.notify.NotifyAndroidContext
+import org.transline.geoworker.notify.NotifyManagerHolder
+import org.transline.geoworker.notify.NotifyPayload
+import org.json.JSONObject
 
 /**
  * RN NativeModule. Имя [LocationTracking] совместимо со старым LocationTracker.ts.
@@ -49,7 +60,11 @@ class LocationTrackerModule(private val reactContext: ReactApplicationContext) :
         rnListenerAttached = true
         controller.addListener(object : org.transline.geoworker.tracker.TrackingListener {
             override fun onLocationSent(latitude: Double, longitude: Double, timestamp: Long) {
-                notificationHelper.showSuccessNotification(latitude, longitude)
+                // N1 geo success shade: skip when trip notify session is active (product N5 owns shade)
+                val hasTripSession = !storage.getTripNotifySessionJson().isNullOrBlank()
+                if (!hasTripSession) {
+                    notificationHelper.showSuccessNotification(latitude, longitude)
+                }
                 val params = Arguments.createMap().apply {
                     putDouble("latitude", latitude)
                     putDouble("longitude", longitude)
@@ -68,6 +83,16 @@ class LocationTrackerModule(private val reactContext: ReactApplicationContext) :
 
             override fun onLocationServicesDisabled() {
                 sendGeoEvent("LOCATION_SERVICES_DISABLED")
+            }
+
+            override fun onProductNotify(title: String, body: String, deepLink: String) {
+                showProductNotifyShade(title, body, deepLink)
+                val params = Arguments.createMap().apply {
+                    putString("title", title)
+                    putString("body", body)
+                    putString("deepLink", deepLink)
+                }
+                sendGeoEvent("PRODUCT_NOTIFY", params)
             }
 
             override fun onHttpResult(
@@ -645,6 +670,154 @@ class LocationTrackerModule(private val reactContext: ReactApplicationContext) :
                 promise.reject("COMPLETE_TRIP_ERROR", e.message, e)
             }
         }
+    }
+
+    private fun showProductNotifyShade(title: String, body: String, deepLink: String) {
+        try {
+            NotifyAndroidContext.init(reactContext)
+            val id = "geo_coords_${System.currentTimeMillis()}"
+            val payload =
+                NotifyPayload(
+                    id = id,
+                    title = title,
+                    body = body,
+                    deepLink = deepLink,
+                    actions =
+                        listOf(
+                            NotifyAction(
+                                id = NotifyActionId.OPEN,
+                                title = "Open",
+                                deepLink = deepLink,
+                            ),
+                        ),
+                )
+            NotifyManagerHolder.getOrCreate().show(payload)
+        } catch (_: Exception) {
+            // best-effort; PRODUCT_NOTIFY event still emitted for JS
+        }
+    }
+
+    @ReactMethod
+    fun setNotifyI18nBundle(locale: String, stringsJson: String, promise: Promise) {
+        try {
+            val obj = JSONObject(stringsJson)
+            val map = mutableMapOf<String, String>()
+            obj.keys().forEach { key -> map[key] = obj.optString(key) }
+            val bundle =
+                NotifyI18nBundle(
+                    locale = locale,
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                    strings = map,
+                )
+            storage.setNotifyI18nBundleJson(encodeNotifyI18nBundle(bundle))
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("NOTIFY_I18N_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getNotifyI18nBundle(promise: Promise) {
+        try {
+            val bundle = decodeNotifyI18nBundle(storage.getNotifyI18nBundleJson())
+            if (bundle == null) {
+                promise.resolve(null)
+                return
+            }
+            val stringsMap = Arguments.createMap()
+            bundle.strings.forEach { (k, v) -> stringsMap.putString(k, v) }
+            promise.resolve(
+                Arguments.createMap().apply {
+                    putString("locale", bundle.locale)
+                    putDouble("updatedAtEpochMs", bundle.updatedAtEpochMs.toDouble())
+                    putMap("strings", stringsMap)
+                },
+            )
+        } catch (e: Exception) {
+            promise.reject("NOTIFY_I18N_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun clearNotifyI18nBundle(promise: Promise) {
+        storage.clearNotifyI18nBundle()
+        promise.resolve(true)
+    }
+
+    @ReactMethod
+    fun saveTripNotifySession(sessionJson: String, promise: Promise) {
+        try {
+            val session = decodeTripNotifySession(sessionJson)
+                ?: run {
+                    promise.reject("TRIP_SESSION_INVALID", "Invalid TripNotifySession JSON")
+                    return
+                }
+            storage.setTripNotifySessionJson(encodeTripNotifySession(session))
+            if (session.orderId.isNotBlank()) {
+                storage.setOrderNumber(session.orderId)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("TRIP_SESSION_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getTripNotifySession(promise: Promise) {
+        try {
+            val session = decodeTripNotifySession(storage.getTripNotifySessionJson())
+            if (session == null) {
+                promise.resolve(null)
+                return
+            }
+            // Return parsed object via JSON round-trip for WritableMap simplicity
+            promise.resolve(sessionJsonToWritableMap(storage.getTripNotifySessionJson()!!))
+        } catch (e: Exception) {
+            promise.reject("TRIP_SESSION_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun clearTripNotifySession(promise: Promise) {
+        storage.clearTripNotifySession()
+        promise.resolve(true)
+    }
+
+    private fun sessionJsonToWritableMap(json: String): WritableMap {
+        val obj = JSONObject(json)
+        return jsonObjectToWritableMap(obj)
+    }
+
+    private fun jsonObjectToWritableMap(obj: JSONObject): WritableMap {
+        val map = Arguments.createMap()
+        obj.keys().forEach { key ->
+            when (val v = obj.get(key)) {
+                is Boolean -> map.putBoolean(key, v)
+                is Int -> map.putInt(key, v)
+                is Long -> map.putDouble(key, v.toDouble())
+                is Double -> map.putDouble(key, v)
+                is String -> map.putString(key, v)
+                is JSONObject -> map.putMap(key, jsonObjectToWritableMap(v))
+                is org.json.JSONArray -> {
+                    val arr = Arguments.createArray()
+                    for (i in 0 until v.length()) {
+                        when (val item = v.get(i)) {
+                            is JSONObject -> arr.pushMap(jsonObjectToWritableMap(item))
+                            is String -> arr.pushString(item)
+                            is Boolean -> arr.pushBoolean(item)
+                            is Int -> arr.pushInt(item)
+                            is Double -> arr.pushDouble(item)
+                            is Long -> arr.pushDouble(item.toDouble())
+                            else -> arr.pushString(item.toString())
+                        }
+                    }
+                    map.putArray(key, arr)
+                }
+                JSONObject.NULL -> map.putNull(key)
+                else -> map.putString(key, v.toString())
+            }
+        }
+        return map
     }
 
     /**

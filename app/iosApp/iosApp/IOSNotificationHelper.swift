@@ -1,12 +1,16 @@
 import UserNotifications
 
 class IOSNotificationHelper {
+
+    /// N1 geo success shade — OFF for product (roadmap). Enable only for DEV harness.
+    static var enableGeoSuccessShade: Bool = false
     
     static func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     static func showSuccessNotification(lat: Double, lon: Double) {
+        guard enableGeoSuccessShade else { return }
         let content = UNMutableNotificationContent()
         content.title = "Транслайн Гео"
         content.body = "Геокоординаты успешно отправлены на сервер (\(lat), \(lon))"

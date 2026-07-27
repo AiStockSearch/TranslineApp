@@ -4,7 +4,10 @@ import platform.CoreLocation.*
 import platform.Foundation.NSError
 import platform.Foundation.timeIntervalSince1970
 import platform.darwin.NSObject
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 
@@ -25,22 +28,51 @@ class IosLocationProvider : PlatformLocationProvider {
         locationManager.showsBackgroundLocationIndicator = true
     }
 
+    /**
+     * One-shot fix. Must call [CLLocationManager] on the main queue (Apple),
+     * and must not hang forever when GPS/simulator never delivers a fix.
+     */
     override suspend fun getCurrentLocation(): Location? {
         val deferred = CompletableDeferred<Location?>()
         delegate.pendingDeferred = deferred
 
-        locationManager.requestLocation()
-        return deferred.await()
+        dispatch_async(dispatch_get_main_queue()) {
+            // Faster than Best for one-shot; continuous tracking restores Best in startTracking.
+            locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            locationManager.requestLocation()
+        }
+
+        val result = withTimeoutOrNull(CURRENT_LOCATION_TIMEOUT_MS) {
+            deferred.await()
+        }
+
+        if (result == null && delegate.pendingDeferred === deferred) {
+            delegate.pendingDeferred = null
+            dispatch_async(dispatch_get_main_queue()) {
+                locationManager.stopUpdatingLocation()
+                locationManager.desiredAccuracy = kCLLocationAccuracyBest
+            }
+        } else {
+            dispatch_async(dispatch_get_main_queue()) {
+                locationManager.desiredAccuracy = kCLLocationAccuracyBest
+            }
+        }
+
+        return result
     }
 
     override fun startTracking(onLocation: (Location) -> Unit) {
         configureManager()
         delegate.onLocationUpdate = onLocation
-        locationManager.startUpdatingLocation()
+        dispatch_async(dispatch_get_main_queue()) {
+            locationManager.startUpdatingLocation()
+        }
     }
 
     override fun stopTracking() {
-        locationManager.stopUpdatingLocation()
+        dispatch_async(dispatch_get_main_queue()) {
+            locationManager.stopUpdatingLocation()
+        }
         delegate.onLocationUpdate = null
         delegate.pendingDeferred?.complete(null)
         delegate.pendingDeferred = null
@@ -77,5 +109,10 @@ class IosLocationProvider : PlatformLocationProvider {
             pendingDeferred?.complete(null)
             pendingDeferred = null
         }
+    }
+
+    companion object {
+        /** Simulator without Custom Location / cold GPS can otherwise hang indefinitely. */
+        const val CURRENT_LOCATION_TIMEOUT_MS = 15_000L
     }
 }

@@ -123,6 +123,20 @@ export interface Spec extends TurboModule {
     body: string | null,
   ): Promise<UnsafeObject>;
 
+  /** Native i18n bundle — any Record; replace-on-sync. */
+  setNotifyI18nBundle(locale: string, stringsJson: string): Promise<boolean>;
+
+  getNotifyI18nBundle(): Promise<UnsafeObject | null>;
+
+  clearNotifyI18nBundle(): Promise<boolean>;
+
+  /** Trip notify session JSON (TripNotifySession). */
+  saveTripNotifySession(sessionJson: string): Promise<boolean>;
+
+  getTripNotifySession(): Promise<UnsafeObject | null>;
+
+  clearTripNotifySession(): Promise<boolean>;
+
   /**
    * New Architecture EventEmitter (codegen).
    * Подписка: NativeLocationTracking.onGeoWorkerEvent(cb)
