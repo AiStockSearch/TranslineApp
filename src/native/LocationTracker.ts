@@ -311,6 +311,80 @@ export const httpProbe = async (
   };
 };
 
+export type NotifyI18nBundlePayload = {
+  locale: string;
+  strings: Record<string, string>;
+};
+
+export type TripNotifyPointPayload = {
+  type: string;
+  address?: string;
+  dateEpochMs?: number | null;
+  lat?: number | null;
+  lon?: number | null;
+};
+
+export type TripNotifySessionPayload = {
+  orderId: string;
+  driverUuid?: string;
+  locale?: string;
+  loadingTimeEpochMs?: number;
+  firstTrackingEpochMs?: number;
+  intervalMinutes?: number;
+  points?: TripNotifyPointPayload[];
+  notifyKeys?: Record<string, string>;
+};
+
+/** Replace native notify i18n dictionary for the active app locale (any keys). */
+export const setNotifyI18nBundle = async (
+  payload: NotifyI18nBundlePayload,
+): Promise<void> => {
+  await LocationTracking!.setNotifyI18nBundle(
+    payload.locale,
+    JSON.stringify(payload.strings ?? {}),
+  );
+};
+
+export const getNotifyI18nBundle = async (): Promise<{
+  locale: string;
+  strings: Record<string, string>;
+  updatedAtEpochMs?: number;
+} | null> => {
+  const raw = await LocationTracking!.getNotifyI18nBundle();
+  if (raw == null) return null;
+  const obj = raw as {
+    locale?: string;
+    strings?: Record<string, string>;
+    updatedAtEpochMs?: number;
+  };
+  return {
+    locale: String(obj.locale ?? ""),
+    strings: obj.strings ?? {},
+    updatedAtEpochMs: obj.updatedAtEpochMs,
+  };
+};
+
+export const clearNotifyI18nBundle = async (): Promise<void> => {
+  await LocationTracking!.clearNotifyI18nBundle();
+};
+
+export const saveTripNotifySession = async (
+  session: TripNotifySessionPayload,
+): Promise<void> => {
+  await LocationTracking!.saveTripNotifySession(JSON.stringify(session));
+};
+
+export const getTripNotifySession =
+  async (): Promise<TripNotifySessionPayload | null> => {
+    const raw = await LocationTracking!.getTripNotifySession();
+    if (raw == null) return null;
+    return raw as TripNotifySessionPayload;
+  };
+
+export const clearTripNotifySession = async (): Promise<void> => {
+  await LocationTracking!.clearTripNotifySession();
+};
+
 /** @deprecated используйте именованные экспорты; оставлен для совместимости */
 export const LocationTrackerService = {
   getCurrentLocation,
@@ -339,6 +413,12 @@ export const LocationTrackerService = {
   saveTokens,
   clearSecrets,
   httpProbe,
+  setNotifyI18nBundle,
+  getNotifyI18nBundle,
+  clearNotifyI18nBundle,
+  saveTripNotifySession,
+  getTripNotifySession,
+  clearTripNotifySession,
 };
 
 export type StartLocationServiceDeps = {

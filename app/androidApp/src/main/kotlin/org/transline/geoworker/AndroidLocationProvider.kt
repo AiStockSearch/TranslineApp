@@ -11,6 +11,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import org.transline.geoworker.tracker.Location
 import org.transline.geoworker.tracker.PlatformLocationProvider
 import org.transline.geoworker.tracker.clampSpeedMps
@@ -22,19 +23,25 @@ class AndroidLocationProvider(private val context: Context) : PlatformLocationPr
     @SuppressLint("MissingPermission")
     override suspend fun getCurrentLocation(): Location? {
         return try {
-            val cancellationTokenSource = CancellationTokenSource()
+            withTimeoutOrNull(CURRENT_LOCATION_TIMEOUT_MS) {
+                val cancellationTokenSource = CancellationTokenSource()
+                try {
+                    // Balanced is usually much faster than HIGH_ACCURACY for one-shot.
+                    var androidLocation = fusedLocationClient.getCurrentLocation(
+                        Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                        cancellationTokenSource.token
+                    ).await()
 
-            var androidLocation = fusedLocationClient.getCurrentLocation(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                cancellationTokenSource.token
-            ).await()
+                    if (androidLocation == null) {
+                        Log.d(TAG, "Balanced null, trying lastLocation")
+                        androidLocation = fusedLocationClient.lastLocation.await()
+                    }
 
-            if (androidLocation == null) {
-                Log.d(TAG, "High accuracy null, trying lastLocation")
-                androidLocation = fusedLocationClient.lastLocation.await()
+                    androidLocation?.toTrackerLocation()
+                } finally {
+                    cancellationTokenSource.cancel()
+                }
             }
-
-            androidLocation?.toTrackerLocation()
         } catch (e: Exception) {
             Log.e(TAG, "Android location error: ${e.message}")
             null
@@ -76,6 +83,7 @@ class AndroidLocationProvider(private val context: Context) : PlatformLocationPr
 
     companion object {
         private const val TAG = "GeoLocationProvider"
+        const val CURRENT_LOCATION_TIMEOUT_MS = 15_000L
     }
 
     private fun android.location.Location.toTrackerLocation(): Location {

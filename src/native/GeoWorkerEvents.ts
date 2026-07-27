@@ -26,7 +26,8 @@ export type GeoEventType =
   | "KEYCHAIN_SAVED"
   | "KEYCHAIN_CLEARED"
   | "KEYCHAIN_ERROR"
-  | "AUTH_MISSING";
+  | "AUTH_MISSING"
+  | "PRODUCT_NOTIFY";
 
 /** Event payload — type/method/url/status/message only; never response body or tokens. */
 export interface GeoEventPayload {

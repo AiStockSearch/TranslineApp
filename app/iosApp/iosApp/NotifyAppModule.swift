@@ -81,6 +81,31 @@ public class NotifyAppModule: RCTEventEmitter {
         sendEvent(withName: "onNotifyAppEvent", body: body)
     }
 
+    /// Show product coords/lifecycle shade from LocationTracker (background-safe).
+    @objc public static func showProductNotify(title: String, body: String, deepLink: String) {
+        let id = "geo_coords_\(Int(Date().timeIntervalSince1970 * 1000))"
+        let jsonObj: [String: Any] = [
+            "id": id,
+            "title": title,
+            "body": body,
+            "deepLink": deepLink,
+            "actions": [
+                ["id": "open", "title": "Open", "deepLink": deepLink],
+            ],
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: jsonObj),
+              let json = String(data: data, encoding: .utf8),
+              let payload = parsePayload(json: json) else {
+            return
+        }
+        if let shared = NotifyAppModule.shared {
+            _ = shared.manager.show(payload: payload)
+            return
+        }
+        let mgr = NotifyManagerHolder.shared.getOrCreate()
+        _ = mgr.show(payload: payload)
+    }
+
     static func parsePayload(json: String) -> NotifyPayload? {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

@@ -5,8 +5,16 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
+import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryRef
+import platform.CoreFoundation.CFDictionarySetValue
+import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFTypeRef
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFAllocatorDefault
+import platform.CoreFoundation.kCFBooleanTrue
+import platform.Foundation.CFBridgingRelease
+import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
@@ -33,65 +41,90 @@ import platform.Security.kSecValueData
  * iOS [SecureConfigStore] using Keychain SecItem (generic password).
  * Accessibility: AfterFirstUnlockThisDeviceOnly for later background reads.
  * Save uses update-or-add.
+ *
+ * Builds queries via [CFDictionaryCreateMutable] — never cast Kotlin Map to CFDictionaryRef
+ * (that ClassCastException aborts the ObjC RN bridge via undeclared Kotlin exception).
  */
 @OptIn(ExperimentalForeignApi::class)
 class KeychainSecureConfigStore : SecureConfigStore {
 
     override fun load(): SecureConfig? {
-        val raw = readKeychain() ?: return null
-        return SecureConfigJson.decode(raw)
+        return try {
+            val raw = readKeychain() ?: return null
+            SecureConfigJson.decode(raw)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     override fun save(config: SecureConfig) {
         val encoded = SecureConfigJson.encode(config)
         val data = (encoded as NSString).dataUsingEncoding(NSUTF8StringEncoding) ?: return
-        val updateStatus = SecItemUpdate(baseQuery(), attributesDictionary(data))
-        if (updateStatus == errSecSuccess) return
-        if (updateStatus == errSecItemNotFound) {
-            SecItemAdd(addQuery(data), null)
-        } else {
-            // Corrupt / duplicate — replace
-            SecItemDelete(baseQuery())
-            SecItemAdd(addQuery(data), null)
+        val base = newBaseQuery()
+        try {
+            val attrs = CFDictionaryCreateMutable(kCFAllocatorDefault, 1, null, null)
+            CFDictionarySetValue(attrs, kSecValueData, CFBridgingRetain(data))
+            val updateStatus = SecItemUpdate(base, attrs)
+            CFRelease(attrs)
+            if (updateStatus == errSecSuccess) return
+            if (updateStatus == errSecItemNotFound) {
+                val add = newAddQuery(data)
+                SecItemAdd(add, null)
+                CFRelease(add)
+            } else {
+                SecItemDelete(base)
+                val add = newAddQuery(data)
+                SecItemAdd(add, null)
+                CFRelease(add)
+            }
+        } finally {
+            CFRelease(base)
         }
     }
 
     override fun clear() {
-        SecItemDelete(baseQuery())
+        val base = newBaseQuery()
+        try {
+            SecItemDelete(base)
+        } finally {
+            CFRelease(base)
+        }
     }
 
-    private fun baseQuery(): CFDictionaryRef =
-        mapOf(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE,
-            kSecAttrAccount to ACCOUNT,
-        ) as CFDictionaryRef
+    private fun newBaseQuery(): CFDictionaryRef {
+        val dict = CFDictionaryCreateMutable(kCFAllocatorDefault, 3, null, null)!!
+        CFDictionarySetValue(dict, kSecClass, kSecClassGenericPassword)
+        CFDictionarySetValue(dict, kSecAttrService, CFBridgingRetain(SERVICE))
+        CFDictionarySetValue(dict, kSecAttrAccount, CFBridgingRetain(ACCOUNT))
+        return dict
+    }
 
-    private fun attributesDictionary(data: NSData): CFDictionaryRef =
-        mapOf(kSecValueData to data) as CFDictionaryRef
-
-    private fun addQuery(data: NSData): CFDictionaryRef =
-        mapOf(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE,
-            kSecAttrAccount to ACCOUNT,
-            kSecValueData to data,
-            kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ) as CFDictionaryRef
+    private fun newAddQuery(data: NSData): CFDictionaryRef {
+        val dict = CFDictionaryCreateMutable(kCFAllocatorDefault, 5, null, null)!!
+        CFDictionarySetValue(dict, kSecClass, kSecClassGenericPassword)
+        CFDictionarySetValue(dict, kSecAttrService, CFBridgingRetain(SERVICE))
+        CFDictionarySetValue(dict, kSecAttrAccount, CFBridgingRetain(ACCOUNT))
+        CFDictionarySetValue(dict, kSecValueData, CFBridgingRetain(data))
+        CFDictionarySetValue(dict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+        return dict
+    }
 
     private fun readKeychain(): String? = memScoped {
-        val query = mapOf(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE,
-            kSecAttrAccount to ACCOUNT,
-            kSecReturnData to true,
-            kSecMatchLimit to kSecMatchLimitOne,
-        ) as CFDictionaryRef
-        val result = alloc<CFTypeRefVar>()
-        val status = SecItemCopyMatching(query, result.ptr)
-        if (status != errSecSuccess) return null
-        val data = result.value as? NSData ?: return null
-        return NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
+        val query = CFDictionaryCreateMutable(kCFAllocatorDefault, 5, null, null)!!
+        try {
+            CFDictionarySetValue(query, kSecClass, kSecClassGenericPassword)
+            CFDictionarySetValue(query, kSecAttrService, CFBridgingRetain(SERVICE))
+            CFDictionarySetValue(query, kSecAttrAccount, CFBridgingRetain(ACCOUNT))
+            CFDictionarySetValue(query, kSecReturnData, kCFBooleanTrue)
+            CFDictionarySetValue(query, kSecMatchLimit, kSecMatchLimitOne)
+            val result = alloc<CFTypeRefVar>()
+            val status = SecItemCopyMatching(query, result.ptr)
+            if (status != errSecSuccess) return null
+            val data = CFBridgingRelease(result.value) as? NSData ?: return null
+            return NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
+        } finally {
+            CFRelease(query as CFTypeRef?)
+        }
     }
 
     companion object {

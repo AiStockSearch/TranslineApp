@@ -23,7 +23,12 @@ class SwiftTrackingListener: NSObject, TrackingListener {
     }
 
     func onLocationSent(latitude: Double, longitude: Double, timestamp: Int64) {
-        IOSNotificationHelper.showSuccessNotification(lat: latitude, lon: longitude)
+        // N1: skip geo success shade when trip notify session is active
+        let raw = UserDefaults.standard.string(forKey: "trip_notify_session_json")?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if raw.isEmpty {
+            IOSNotificationHelper.showSuccessNotification(lat: latitude, lon: longitude)
+        }
         // RN bridge rejects raw Int64 — always box as NSNumber.
         module.sendGeoEvent(type: "LOCATION_SENT", payload: [
             "latitude": latitude,
@@ -41,6 +46,15 @@ class SwiftTrackingListener: NSObject, TrackingListener {
 
     func onLocationServicesDisabled() {
         module.sendGeoEvent(type: "LOCATION_SERVICES_DISABLED")
+    }
+
+    func onProductNotify(title: String, body: String, deepLink: String) {
+        NotifyAppModule.showProductNotify(title: title, body: body, deepLink: deepLink)
+        module.sendGeoEvent(type: "PRODUCT_NOTIFY", payload: [
+            "title": title,
+            "body": body,
+            "deepLink": deepLink
+        ])
     }
 
     func onHttpResult(ok: Bool, method: String, url: String, status: KotlinInt?, message: String) {
@@ -397,13 +411,18 @@ public class LocationTrackerModule: RCTEventEmitter, CLLocationManagerDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    let ok = controller.saveSecureConfig(
-      access: access,
-      refresh: refresh,
-      endpointUrl: endpointUrl,
-      customHeaders: parseHeadersJson(headersJson)
-    )
-    resolve(ok)
+    // Never let Kotlin undeclared exceptions abort the process — reject the promise instead.
+    do {
+      let ok = controller.saveSecureConfig(
+        access: access,
+        refresh: refresh,
+        endpointUrl: endpointUrl,
+        customHeaders: parseHeadersJson(headersJson)
+      )
+      resolve(ok)
+    } catch {
+      reject("KEYCHAIN_ERROR", error.localizedDescription, error)
+    }
   }
 
   @objc public func saveTokens(
@@ -412,7 +431,11 @@ public class LocationTrackerModule: RCTEventEmitter, CLLocationManagerDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    resolve(controller.saveTokens(access: access, refresh: refresh))
+    do {
+      resolve(controller.saveTokens(access: access, refresh: refresh))
+    } catch {
+      reject("KEYCHAIN_ERROR", error.localizedDescription, error)
+    }
   }
 
   /** Clears SecureConfigStore only (D-06) — never TrackingStorage.clear. */
@@ -460,18 +483,42 @@ public class LocationTrackerModule: RCTEventEmitter, CLLocationManagerDelegate {
   // MARK: - Trip / utils
 
   @objc public func getCurrentLocation(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+    // KMP one-shot historically awaited GPS forever; race a JS-facing timeout so DEV UI
+    // cannot spin indefinitely (simulator without Custom Location is the usual culprit).
+    var settled = false
+    let lock = NSLock()
+    let finish: (@escaping () -> Void) -> Void = { block in
+      lock.lock()
+      defer { lock.unlock() }
+      guard !settled else { return }
+      settled = true
+      block()
+    }
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+      finish {
+        reject(
+          "LOCATION_TIMEOUT",
+          "Таймаут GPS (15с). На симуляторе: Features → Location → Custom Location.",
+          nil
+        )
+      }
+    }
+
     locationProvider.getCurrentLocation { location, error in
-      if let error = error {
-        reject("LOCATION_ERROR", error.localizedDescription, error)
-      } else if let location = location {
-        resolve([
-          "latitude": location.latitude,
-          "longitude": location.longitude,
-          "speedMps": location.speedMps,
-          "timestamp": NSNumber(value: location.timestampMs)
-        ])
-      } else {
-        reject("LOCATION_NULL", "Геопозиция недоступна", nil)
+      finish {
+        if let error = error {
+          reject("LOCATION_ERROR", error.localizedDescription, error)
+        } else if let location = location {
+          resolve([
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "speedMps": location.speedMps,
+            "timestamp": NSNumber(value: location.timestampMs)
+          ])
+        } else {
+          reject("LOCATION_NULL", "Геопозиция недоступна (нет фикса / нет прав / таймаут)", nil)
+        }
       }
     }
   }
@@ -592,5 +639,94 @@ public class LocationTrackerModule: RCTEventEmitter, CLLocationManagerDelegate {
         resolve(nil)
       }
     }
+  }
+
+  @objc public func setNotifyI18nBundle(
+    _ locale: String,
+    stringsJson: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    guard let data = stringsJson.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      reject("NOTIFY_I18N_ERROR", "Invalid strings JSON", nil)
+      return
+    }
+    var map = [String: String]()
+    for (k, v) in obj {
+      map[k] = "\(v)"
+    }
+    let payload: [String: Any] = [
+      "locale": locale,
+      "updatedAtEpochMs": Int(Date().timeIntervalSince1970 * 1000),
+      "strings": map
+    ]
+    guard let outData = try? JSONSerialization.data(withJSONObject: payload),
+          let out = String(data: outData, encoding: .utf8) else {
+      reject("NOTIFY_I18N_ERROR", "Encode failed", nil)
+      return
+    }
+    storage.setNotifyI18nBundleJson(json: out)
+    resolve(true)
+  }
+
+  @objc public func getNotifyI18nBundle(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    guard let raw = storage.getNotifyI18nBundleJson()?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !raw.isEmpty,
+          let data = raw.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) else {
+      resolve(NSNull())
+      return
+    }
+    resolve(obj)
+  }
+
+  @objc public func clearNotifyI18nBundle(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    storage.clearNotifyI18nBundle()
+    resolve(true)
+  }
+
+  @objc public func saveTripNotifySession(
+    _ sessionJson: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    guard let data = sessionJson.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let orderId = obj["orderId"] as? String, !orderId.isEmpty else {
+      reject("TRIP_SESSION_INVALID", "Invalid TripNotifySession JSON", nil)
+      return
+    }
+    storage.setTripNotifySessionJson(json: sessionJson)
+    storage.setOrderNumber(value: orderId)
+    resolve(true)
+  }
+
+  @objc public func getTripNotifySession(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    guard let raw = storage.getTripNotifySessionJson()?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !raw.isEmpty,
+          let data = raw.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) else {
+      resolve(NSNull())
+      return
+    }
+    resolve(obj)
+  }
+
+  @objc public func clearTripNotifySession(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    storage.clearTripNotifySession()
+    resolve(true)
   }
 }
