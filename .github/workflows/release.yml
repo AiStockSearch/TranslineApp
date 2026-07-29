@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Extract version from tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build AAR
+        run: ./gradlew :core:assembleAndroidMain :app:shared:assembleAndroidMain
+
+      - name: Pack npm tarball
+        run: |
+          chmod +x scripts/pack-npm.sh
+          ./scripts/pack-npm.sh "${{ steps.version.outputs.value }}"
+
+      - name: Publish GitHub Release
+        run: |
+          chmod +x scripts/publish-github-release.sh
+          ./scripts/publish-github-release.sh "${{ steps.version.outputs.value }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_OWNER: AiStockSearch
+          GITHUB_REPO: TranslineApp
+
+      - name: Publish npm package
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          echo "@transline:registry=https://npm.pkg.github.com" >> ~/.npmrc
+          npm publish dist/transline-geoworker-${{ steps.version.outputs.value }}.tgz
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
