@@ -1,0 +1,21 @@
+--- a/android/settings.gradle
++++ b/android/settings.gradle
+@@ -1,6 +1,18 @@
+ rootProject.name = 'YourApp'
+ apply from: file("../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesSettingsGradle(settings)
+ include ':app'
+ includeBuild('../node_modules/@react-native/gradle-plugin')
++
++// --- TranslineGeoWorker (KMP shared) ---
++// Вариант A: монорепо / соседний клон
++include ':geoworker-shared'
++project(':geoworker-shared').projectDir = new File(
++    settingsDir,
++    '../../TranslineGeoWorker/app/shared'  // поправьте относительный путь
++)
++include ':geoworker-core'
++project(':geoworker-core').projectDir = new File(
++    settingsDir,
++    '../../TranslineGeoWorker/core'
++)
++// Вариант B: maven { url ... } + implementation "org.transline:shared:x.y.z"

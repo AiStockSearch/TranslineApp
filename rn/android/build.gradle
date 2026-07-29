@@ -1,0 +1,53 @@
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+android {
+  namespace "org.transline.geoworker"
+  compileSdkVersion safeExtGet("compileSdkVersion", 35)
+
+  defaultConfig {
+    minSdkVersion safeExtGet("minSdkVersion", 24)
+    targetSdkVersion safeExtGet("targetSdkVersion", 35)
+    consumerProguardFiles "consumer-rules.pro"
+  }
+
+  sourceSets {
+    main {
+      java.srcDirs = ["src/main/java"]
+      manifest.srcFile "src/main/AndroidManifest.xml"
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+}
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+
+  // Prebuilt KMP AARs (подкладываются scripts/pack-npm.sh).
+  // `api` — host FCM / LocationServiceController must see tracker.* types.
+  api files("libs/geoworker-shared.aar")
+  api files("libs/geoworker-core.aar")
+
+  implementation "com.google.android.gms:play-services-location:21.2.0"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1"
+  implementation "org.jetbrains.kotlinx:kotlinx-datetime:0.6.0"
+  implementation "io.ktor:ktor-client-core:2.3.9"
+  implementation "io.ktor:ktor-client-okhttp:2.3.9"
+  implementation "io.ktor:ktor-client-content-negotiation:2.3.9"
+  implementation "io.ktor:ktor-serialization-kotlinx-json:2.3.9"
+  implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"
+  implementation "androidx.core:core-ktx:1.13.1"
+}

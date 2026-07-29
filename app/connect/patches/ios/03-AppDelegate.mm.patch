@@ -1,0 +1,30 @@
+--- a/ios/YourApp/AppDelegate.mm
++++ b/ios/YourApp/AppDelegate.mm
+@@ -1,8 +1,12 @@
+ #import "AppDelegate.h"
+ 
+ #import <React/RCTBundleURLProvider.h>
++// LocationTracking регистрируется через RCT_EXTERN_REMAP_MODULE —
++// отдельный import не обязателен, если .m/.swift в таргете.
++// При FCM-старте трекинга вызовите нативный LocationServiceController
++// (Android) / аналог на iOS из notification handler.
+ 
+ @implementation AppDelegate
+ 
+ - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
+ {
+   self.moduleName = @"YourApp";
+   self.initialProps = @{};
+ 
+   return [super application:application didFinishLaunchingWithOptions:launchOptions];
+ }
++
++// Опционально: после cold start восстановить трекинг, если конфиг уже в UserDefaults.
++// KMP storage сам хранит tracking_active; нативный слой при старте модуля
++// может вызвать resumeLocationServiceIfActive через shared controller.
+ 
+ - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
+ {
+   return [self bundleURL];
+ }
+ @end

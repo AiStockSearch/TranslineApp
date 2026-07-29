@@ -1,0 +1,28 @@
+--- a/android/app/build.gradle
++++ b/android/app/build.gradle
+@@ -80,6 +80,20 @@ android {
+ }
+ 
+ dependencies {
+     // The version of react-native is set by the React Native Gradle Plugin
+     implementation("com.facebook.react:react-android")
++
++    // --- TranslineGeoWorker ---
++    implementation project(':geoworker-shared')
++    // если core не api() из shared — раскомментируйте:
++    // implementation project(':geoworker-core')
++
++    implementation("com.google.android.gms:play-services-location:21.2.0")
++    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
++    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0")
++    implementation("io.ktor:ktor-client-core:2.3.9")
++    implementation("io.ktor:ktor-client-okhttp:2.3.9")
++    implementation("io.ktor:ktor-client-content-negotiation:2.3.9")
++    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.9")
++
+     if (hermesEnabled.toBoolean()) {
+         implementation("com.facebook.react:hermes-android")
+     } else {
+         implementation jscFlavor
+     }
+ }

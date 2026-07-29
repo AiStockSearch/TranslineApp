@@ -10,6 +10,15 @@ class GeoNotificationHelper(private val context: Context) {
 
     private val channelId = "geo_worker_channel"
 
+    companion object {
+        /**
+         * N1 geo success shade — OFF for product (roadmap).
+         * Set true only in DEV harness if you need legacy shade spam.
+         */
+        @JvmField
+        var enableGeoSuccessShade: Boolean = false
+    }
+
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -23,6 +32,7 @@ class GeoNotificationHelper(private val context: Context) {
     }
 
     fun showSuccessNotification(lat: Double, lon: Double) {
+        if (!enableGeoSuccessShade) return
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentTitle("Транслайн Гео")
